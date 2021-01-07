@@ -1,0 +1,571 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  iopulse-backend
+
+  Sample SAM Template for iopulse-backend
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+#Globals:
+#  Function:
+#    Timeout: 3
+Parameters:
+  Domain:
+    Description: Domain name for cognito pool
+    Type: String
+    Default: krysp-staging
+  EcrName:
+    Description: Deployment ECR name
+    Type: String
+    Default: 642168441636.dkr.ecr.us-east-1.amazonaws.com/krysp-staging
+  ClusterName:
+    Description: Cluster Name to be used by the lambda to connect
+    Type: String
+    Default: krysp-eks
+  DomainName:
+    Description: Parent domain name under which the subdomains will be created under
+    Type: String
+    Default: node.iopulsedev.net
+  AcmCertificate:
+    Description: ACM Certificate ARN to be used for https connections
+    Type: String
+    Default: "arn:aws:acm:us-east-1:642168441636:certificate/90aa302c-4b19-4e12-b206-88a2273153f8"
+  CFDistributionIdFlow:
+    Description: Cloudfront distribution ID to invalidate the cache
+    Type: String
+    Default: ED1NNTLD4NPK5
+  CFDistributionIdStatic:
+    Description: Cloudfront distribution ID to invalidate static bucket cache
+    Type: String
+    Default: E3O7IJ67N0N9X6
+  UserPoolId:
+    Description: Cognito User Pool Id to delete user
+    Type: String
+    Default: us-east-1_rnW2fJZwY
+
+
+
+Resources:
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Delete
+    Properties:
+      UserPoolName: !Join [ '-', [ !Ref Domain, "userpool" ] ]
+      LambdaConfig:
+        PostConfirmation: !GetAtt CognitoPostSignupTrigger.Arn
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_LINK
+        EmailSubjectByLink: "Your verification link"
+        EmailMessageByLink: 'Please click the link below to verify your email address. {##Verify Email##}'
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: False
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: True
+          Required: False
+        - Name: email
+          AttributeDataType: String
+          Mutable: True
+          Required: True
+        - Name: phone_number
+          AttributeDataType: String
+          Mutable: True
+          Required: False
+        - Name: domain
+          AttributeDataType: String
+          Mutable: True
+          Required: False
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Join [ '-', [ !Ref Domain, "userpool", "client" ] ]
+      UserPoolId:
+        Ref: CognitoUserPool
+      AllowedOAuthFlowsUserPoolClient: True
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - phone
+        - email
+        - openid
+        - profile
+        - aws.cognito.signin.user.admin
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      CallbackURLs:
+        - http://localhost
+       # - !Join [ '', [ 'https://', !Ref ApiGatewayRestApi, '.execute-api.', !Ref "AWS::Region", '.amazonaws.com/', 'dev' ] ]
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref Domain
+      UserPoolId:
+        Ref: CognitoUserPool
+
+  CognitoIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub "${Domain}-identity-pool"
+      AllowUnauthenticatedIdentities: False
+      CognitoIdentityProviders:
+        - ClientId: !Ref CognitoUserPoolClient
+          ProviderName: !GetAtt CognitoUserPool.ProviderName
+
+  CognitoIdentityPoolRoles:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref CognitoIdentityPool
+      Roles:
+        "authenticated": !GetAtt CognitoAuthenticatedDefaultRole.Arn
+        "unauthenticated": !GetAtt CognitoUnAuthenticatedDefaultRole.Arn
+      RoleMappings:
+        "CognitoUserPool":
+          IdentityProvider: !Sub "cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}:${CognitoUserPoolClient}"
+          AmbiguousRoleResolution: AuthenticatedRole
+          Type: Token
+
+  #Cognito Unauthenticated IAM Policy
+  CognitoUnAuthenticatedDefaultRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Federated: 'cognito-identity.amazonaws.com'
+            Action:
+              - 'sts:AssumeRoleWithWebIdentity'
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud':
+                  Ref: CognitoIdentityPool
+              'ForAnyValue:StringLike':
+                'cognito-identity.amazonaws.com:amr': unauthenticated
+      Policies:
+        - PolicyName: 'CognitoUnAuthenticatedDefaultPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'mobileanalytics:PutEvents'
+                  - 'cognito-sync:*'
+                Resource: '*'
+
+  # Default Authenticated Role
+  CognitoAuthenticatedDefaultRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Federated: 'cognito-identity.amazonaws.com'
+            Action:
+              - 'sts:AssumeRoleWithWebIdentity'
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud':
+                  Ref: CognitoIdentityPool
+              'ForAnyValue:StringLike':
+                'cognito-identity.amazonaws.com:amr': authenticated
+      Policies:
+        - PolicyName: 'CognitoAuthenticatedDefaultPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'mobileanalytics:PutEvents'
+                  - 'cognito-sync:*'
+                  - 'cognito-identity:*'
+                Resource: '*'
+  CognitoUserGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      Description: IOpulse backend user
+      GroupName: Users
+      Precedence: 0
+      RoleArn: !GetAtt CognitoUserGroupRole.Arn
+      UserPoolId: !Ref CognitoUserPool
+
+  CognitoUserGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Federated: 'cognito-identity.amazonaws.com'
+            Action:
+              - 'sts:AssumeRoleWithWebIdentity'
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud':
+                  Ref: CognitoIdentityPool
+              'ForAnyValue:StringLike':
+                'cognito-identity.amazonaws.com:amr': authenticated
+      Policies:
+        - PolicyName: 'CognitoAuthenticatedUserPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'mobileanalytics:PutEvents'
+                  - 'cognito-sync:*'
+                  - 'cognito-identity:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'execute-api:Invoke'
+                Resource:
+                  - "*"
+
+  CognitoPostSignupTrigger:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: trigger/
+      Handler: lambda_trigger.lambda_handler
+      Runtime: python3.8
+      Timeout: 3
+      Layers:
+        - !Ref AwsCliLambdaLayer
+      Policies:
+        - AmazonEventBridgeFullAccess
+        - AWSXrayWriteOnlyAccess
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminUpdateUserAttributes
+                - cognito-idp:AdminAddUserToGroup
+              Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
+      Environment:
+        Variables:
+          KUBECONFIG: "/tmp/kubeconfig"
+          KUBE_ROLE: !GetAtt CognitoKubernetesLambdaRole.Arn # Removed this as we are directly assigning the role to lambda
+          HOSTNAME: !Ref DomainName
+          ACM_ARN: !Ref AcmCertificate
+          CLUSTER_NAME: !Ref ClusterName
+          DEPLOYMENT_ECR_NAME: !Ref EcrName
+          LAMBDA_FUNCTION: !GetAtt CognitoAsyncPostSignupTrigger.Arn
+
+  AwsCliLambdaLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: aws-cli
+      Description: Lambda layer with all node module dependency and shared code between lambda
+      ContentUri: ops/layer.zip
+      CompatibleRuntimes:
+        - python3.8
+      RetentionPolicy: Delete
+
+  CognitoKubernetesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'lambda.amazonaws.com'
+            Action: 'sts:AssumeRole'
+          - Effect: 'Allow'
+            Principal:
+              Service: 'cloudformation.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AmazonEventBridgeFullAccess
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: 'CognitoKubernetesLambdaPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - "ec2:DescribeSubnets"
+                  - "ec2:DescribeVpcs"
+                  - "ec2:DescribeKeyPairs"
+                  - "ec2:CreateSecurityGroup"
+                  - "ec2:DescribeSecurityGroups"
+                  - "ec2:DeleteSecurityGroup"
+                  - "iam:CreateRole"
+                  - "iam:DetachRolePolicy"
+                  - "iam:AttachRolePolicy"
+                  - "iam:DeleteRole"
+                  - "iam:GetRole"
+                  - "iam:PassRole"
+                  - "iam:ListAttachedRolePolicies"
+                  - "iam:CreateServiceLinkedRole"
+                  - "iam:DeleteServiceLinkedRole"
+                  - "eks:*"
+                Resource: '*'
+              - Effect: "Allow"
+                Action:
+                  - "iam:PassRole"
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    "iam:PassedToService": "eks.amazonaws.com"
+
+
+  CognitoAsyncPostSignupTrigger:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: trigger/
+      Handler: app.lambda_handler
+      Runtime: python3.8
+      Timeout: 300
+      Role: !GetAtt CognitoKubernetesLambdaRole.Arn
+      Layers:
+        - !Ref AwsCliLambdaLayer
+      Environment:
+        Variables:
+          KUBECONFIG: "/tmp/kubeconfig"
+          KUBE_ROLE: !GetAtt CognitoKubernetesLambdaRole.Arn # Removed this as we are directly assigning the role to lambda
+          HOSTNAME: !Ref DomainName
+          ACM_ARN: !Ref AcmCertificate
+          DEPLOYMENT_ECR_NAME: !Ref EcrName
+          CLUSTER_NAME: !Ref ClusterName
+
+  FlowBucketCloudFrontInvalidationLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ops/cloudfront/
+      Handler: invalidate.lambda_handler
+      Runtime: python3.8
+      Timeout: 300
+      Role: !GetAtt CognitoKubernetesLambdaRole.Arn
+#      Layers:
+#        - !Ref AwsCliLambdaLayer
+#      Events:
+#        InvdaliteFileEvent:
+#          Type: S3
+#          Properties:
+#            Bucket: !Ref SrcBucket
+#            Events: s3:ObjectCreated:*
+      Environment:
+        Variables:
+          CLOUDFRONT_DISTRIBUTION_ID: !Ref CFDistributionIdFlow
+
+  StaticBucketCloudFrontInvalidationLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ops/cloudfront/
+      Handler: invalidate.lambda_handler
+      Runtime: python3.8
+      Timeout: 300
+      Role: !GetAtt CognitoKubernetesLambdaRole.Arn
+#      Layers:
+#        - !Ref AwsCliLambdaLayer
+#      Events:
+#        InvdaliteFileEvent:
+#          Type: S3
+#          Properties:
+#            Bucket: !Ref SrcBucket
+#            Events: s3:ObjectCreated:*
+      Environment:
+        Variables:
+          CLOUDFRONT_DISTRIBUTION_ID: !Ref CFDistributionIdStatic
+
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Auth:
+        AddDefaultAuthorizerToCorsPreflight: false
+        ApiKeyRequired: false
+      Name: Krysp rest api
+      StageName: stage
+  
+  # DeleteNamespaceLambda:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     CodeUri: trigger/
+  #     Handler: delete_namespace.lambda_handler
+  #     Layers:
+  #       - !Ref AwsCliLambdaLayer
+  #     Runtime: python3.8
+  #     Timeout: 60
+  #     Role: !GetAtt CognitoKubernetesLambdaRole.Arn
+  #     Environment:
+  #       Variables:
+  #         KUBECONFIG: "/tmp/kubeconfig"
+  #         KUBE_ROLE: !GetAtt CognitoKubernetesLambdaRole.Arn # Removed this as we are directly assigning the role to lambda
+  #         HOSTNAME: !Ref DomainName
+  #         ACM_ARN: !Ref AcmCertificate
+  #         DEPLOYMENT_ECR_NAME: !Ref EcrName
+  #         CLUSTER_NAME: !Ref ClusterName
+  #     Events:
+  #       DeleteNsApi:
+  #         Type: Api
+  #         Properties:
+  #           Path: "/namespace/{namespace}"
+  #           Method: delete
+  #           RestApiId: !Ref RestApi
+  #           Auth:
+  #             Authorizer: null
+  #             InvokeRole: NONE
+
+
+  DeleteNamespaceAndCognitoUserLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: trigger/
+      Handler: delete_ns_cognitouser.lambda_handler
+      Layers:
+        - !Ref AwsCliLambdaLayer
+      Runtime: python3.8
+      Timeout: 60
+      Role: !GetAtt CognitoKubernetesLambdaRole.Arn
+      Environment:
+        Variables:
+          KUBECONFIG: "/tmp/kubeconfig"
+          KUBE_ROLE: !GetAtt CognitoKubernetesLambdaRole.Arn # Removed this as we are directly assigning the role to lambda
+          HOSTNAME: !Ref DomainName
+          ACM_ARN: !Ref AcmCertificate
+          DEPLOYMENT_ECR_NAME: !Ref EcrName
+          CLUSTER_NAME: !Ref ClusterName
+          USER_POOL_ID: !Ref UserPoolId
+      Policies:
+        - AmazonEventBridgeFullAccess
+        - AWSXrayWriteOnlyAccess
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminUpdateUserAttributes
+                - cognito-idp:AdminAddUserToGroup
+                - cognito-idp:AdminDeleteUser
+                - cognito-idp:AdminGetUser
+              Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
+      Events:
+        DeleteNsApi:
+          Type: Api
+          Properties:
+            Path: "/username/{username}"
+            Method: delete
+            RestApiId: !Ref RestApi
+            Auth:
+              Authorizer: null
+              InvokeRole: NONE
+
+  # DeleteCognitoUserLambda:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     CodeUri: trigger/
+  #     Handler: delete_cognito_user.lambda_handler
+  #     Layers:
+  #       - !Ref AwsCliLambdaLayer
+  #     Runtime: python3.8
+  #     Timeout: 60 
+  #     Environment:
+  #       Variables:
+  #         USER_POOL_ID: !Ref UserPoolId
+  #     Policies:
+  #       - AmazonEventBridgeFullAccess
+  #       - AWSXrayWriteOnlyAccess
+  #       - AWSLambdaBasicExecutionRole
+  #       - Statement:
+  #           - Effect: Allow
+  #             Action:
+  #               - cognito-idp:AdminUpdateUserAttributes
+  #               - cognito-idp:AdminAddUserToGroup
+  #               - cognito-idp:AdminDeleteUser
+  #             Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
+  #     Events:
+  #       DeleteCognitoUserApi:
+  #         Type: Api
+  #         Properties:
+  #           Path: "/username/{username}"
+  #           Method: delete
+  #           RestApiId: !Ref RestApi
+  #           Auth:
+  #             Authorizer: null
+  #             InvokeRole: NONE 
+
+    # UpdateDeploymentLambda:
+    # Type: AWS::Serverless::Function
+    # Properties:
+    #   CodeUri: trigger/
+    #   Handler: update_deployment.lambda_handler
+    #   Layers:
+    #     - !Ref AwsCliLambdaLayer
+    #   Runtime: python3.8
+    #   Timeout: 60
+    #   Role: !GetAtt CognitoKubernetesLambdaRole.Arn
+    #   Environment:
+    #     Variables:
+    #       KUBECONFIG: "/tmp/kubeconfig"
+    #       KUBE_ROLE: !GetAtt CognitoKubernetesLambdaRole.Arn # Removed this as we are directly assigning the role to lambda
+    #       HOSTNAME: !Ref DomainName
+    #       ACM_ARN: !Ref AcmCertificate
+    #       DEPLOYMENT_ECR_NAME: !Ref EcrName
+    #       CLUSTER_NAME: !Ref ClusterName
+    #   Events:
+    #     DeletePodApi:
+    #       Type: Api
+    #       Properties:
+    #         Path: "/pod/{pod}"
+    #         Method: delete
+    #         RestApiId: !Ref RestApi
+    #         Auth:
+    #           Authorizer: null
+    #           InvokeRole: NONE
+
+  
+  RestartPodLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: trigger/
+      Handler: delete_pod.lambda_handler
+      Layers:
+        - !Ref AwsCliLambdaLayer
+      Runtime: python3.8
+      Timeout: 60
+      Role: !GetAtt CognitoKubernetesLambdaRole.Arn
+      Environment:
+        Variables:
+          KUBECONFIG: "/tmp/kubeconfig"
+          KUBE_ROLE: !GetAtt CognitoKubernetesLambdaRole.Arn # Removed this as we are directly assigning the role to lambda
+          HOSTNAME: !Ref DomainName
+          ACM_ARN: !Ref AcmCertificate
+          DEPLOYMENT_ECR_NAME: !Ref EcrName
+          CLUSTER_NAME: !Ref ClusterName
+      Events:
+        DeletePodApi:
+          Type: Api
+          Properties:
+            Path: "/pod/{namespace}"
+            Method: delete
+            RestApiId: !Ref RestApi
+            Auth:
+              Authorizer: null
+              InvokeRole: NONE
+
+Outputs:
+  CognitoPostSignupTrigger:
+    Description: "Cognito post signup trigger ARN"
+    Value: !GetAtt CognitoPostSignupTrigger.Arn

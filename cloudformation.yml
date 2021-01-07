@@ -1,0 +1,217 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IOPulse cloudformation for codepipeline
+Parameters:
+  DeploymentArtifactBucket:
+    Type: String
+    Description: deployment S3 bucket name
+  DeployBucketName:
+    Type: String
+    Description: Deployment S3 bucket to deploy the resources
+  GitHubToken:
+    NoEcho: 'true'
+    Type: String
+    Description: github Secret. OAuthToken with access to Repo. Go to https://github.com/settings/tokens
+  GitHubUser:
+    Type: String
+    Description: GitHub UserName
+    Default: iopulse-net
+  ProjectName:
+    Type: String
+    Description: Project name
+    Default: flow
+  GitHubRepo:
+    Type: String
+    Description: GitHub Repo to pull from. Only the Name. not the URL
+    Default: flow
+  GitHubBranch:
+    Type: String
+    Description: Branch to use from Repo. Only the Name. not the URL
+    Default: master
+  OperationsSNSTopic:
+    Type: String
+    Description: Operations SNS topic arn to use for notification
+Conditions:
+  NotCreateEvents: !Equals [!Ref OperationsSNSTopic, ""]
+  CreateEvents:
+    Fn::Not:
+      - Condition: NotCreateEvents
+Resources:
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+  CodeBuildServicePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: CodeBuildServicePolicy
+      Roles:
+        - !Ref CodeBuildServiceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:PutObject
+              - ssm:GetParameters
+            Resource: '*'
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref ProjectName
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: linuxContainer
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/standard:4.0
+        ImagePullCredentialsType: CODEBUILD
+        PrivilegedMode: false
+        EnvironmentVariables:
+          - Name: BUILD_ARTIFACT_BUCKET
+            Value: DeploymentArtifactBucket
+          - Name: VUE_APP_API_HOST
+            Value: VUE_APP_API_HOST
+            Type: PARAMETER_STORE
+          - Name: VUE_APP_COGNITO_IDENTITY_POOL_ID
+            Value: VUE_APP_COGNITO_IDENTITY_POOL_ID
+            Type: PARAMETER_STORE
+          - Name: VUE_APP_COGNITO_REGION
+            Value: VUE_APP_COGNITO_REGION
+            Type: PARAMETER_STORE
+          - Name: VUE_APP_COGNITO_USER_POOL_ID
+            Value: VUE_APP_COGNITO_USER_POOL_ID
+            Type: PARAMETER_STORE
+          - Name: VUE_APP_COGNITO_USER_POOL_WEB_CLIENT_ID
+            Value: VUE_APP_COGNITO_USER_POOL_WEB_CLIENT_ID
+            Type: PARAMETER_STORE
+          - Name: VUE_APP_GCLOUD_MAP_KEY
+            Value: VUE_APP_GCLOUD_MAP_KEY
+            Type: PARAMETER_STORE
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 10
+  CodePipelineServicePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: CodePipelineServicePolicy
+      Roles:
+        - !Ref CodePipelineServiceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:PutObject
+              - codebuild:BatchGetBuilds
+              - codebuild:StartBuild
+              - codebuild:StopBuild
+            Resource: '*'
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Type: S3
+        Location: !Ref DeploymentArtifactBucket
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: SourceCodeOutputArtifact
+              Configuration:
+                Owner: !Ref GitHubUser
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: CodeBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              InputArtifacts:
+                - Name: SourceCodeOutputArtifact
+              OutputArtifacts:
+                - Name: BuildOutputArtifact
+              Configuration:
+                ProjectName: !Ref ProjectName
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: CodeDeploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: S3
+              InputArtifacts:
+                - Name: BuildOutputArtifact
+              Configuration:
+                BucketName: !Ref DeployBucketName
+                Extract: 'true'
+              RunOrder: 1
+  EventRule:
+    Type: "AWS::Events::Rule"
+    Condition: CreateEvents
+    Properties:
+      Description: "EventRule"
+      EventPattern:
+        source:
+          - aws.codepipeline
+        detail:
+          state:
+            - SUCCEEDED
+            - CANCELED
+            - FAILED
+      State: "ENABLED"
+      Targets:
+        -
+          Arn: !Ref OperationsSNSTopic
+          Id: "OpsTopic"
+          InputTransformer:
+            InputPathsMap:
+              pipeline: "$.detail.pipeline"
+              state: "$.detail.state"
+              execution: "$.detail.execution-id"
+            InputTemplate: '"{ \"job\": \"PIPELINE\", \"status\": \"<state>\",\"execution\": \"<execution>\", \"payload\": { \"pipeline\": \"<pipeline>\", \"state\": \"<state>\" } }"'

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+#    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+#    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+#    service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: '*'
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:us-east-1:055326469205:certificate/ff046149-a917-4f1e-bc8e-3aaf155f6421
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: https
+  labels:
+    k8s-addon: ingress-nginx.addons.k8s.io
+  name: ingress-nginx
+  namespace: nginx-controller
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: http
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: http
+  selector:
+    app: ingress-nginx
+  type: LoadBalancer
