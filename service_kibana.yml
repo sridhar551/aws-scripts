@@ -1,0 +1,13 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: kibana-service
+  namespace: kibana
+spec:
+  ports:
+    - protocol: TCP
+      port: 443
+      targetPort: 443
+  type: ExternalName
+  sessionAffinity: None
+  externalName: 3253041dda6b48ab8c7945e499cad949.us-east-1.aws.found.io

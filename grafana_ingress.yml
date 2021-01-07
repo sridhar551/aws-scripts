@@ -1,0 +1,63 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: monitoring
+  annotations:
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location ~* \.(html)$ {
+              add_header Last-Modified $date_gmt;
+              add_header Cache-Control 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0';
+              if_modified_since off;
+              expires off;
+              etag off;
+            }
+    nginx.ingress.kubernetes.io/configuration-snippet: >
+      proxy_set_header Authorization "Basic YWRtaW46cHJvbS1vcGVyYXRvcg==";
+      proxy_cache_bypass $cookie_nocache $arg_nocache$arg_comment;
+
+    # nginx.ingress.kubernetes.io/configuration-snippet: |
+    #     if ($request_uri ~ /img ) {
+    #       expires 1M;
+    #       access_log off;
+    #       add_header Cache-Control "public";
+    #     }
+    #     if ($request_uri ~ /js ) {
+    #       expires 1y;
+    #       access_log off;
+    #       add_header Cache-Control "public";
+    #     }
+    #     if ($request_uri ~ /css ) {
+    #       expires 1y;
+    #       access_log off;
+    #       add_header Cache-Control "public";
+    #     }
+spec:
+  rules:
+  - host: grafana.node.iopulsedev.net
+    http:
+      paths:
+      - backend:
+          serviceName: kube-prometheus-stack-grafana
+          servicePort: 80
+  - host: prometheus.node.iopulsedev.net
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: prometheus-operated
+          servicePort: 9090
+  - host: alertmanager.node.iopulsedev.net
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: kube-prometheus-stack-alertmanager
+          servicePort: 9093
+  - host: loki.node.iopulsedev.net
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: loki
+          servicePort: 3101

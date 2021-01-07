@@ -1,0 +1,8 @@
+apiVersion: v1
+data:
+  X-Authorization: "Basic ZWxhc3RpYzo2ak9hU29PSVN1OUloRGd3YkNtUjBHcnE="
+  X-Using-Nginx-Controller: "true"
+kind: ConfigMap
+metadata:
+  name: kibana-headers
+  namespace: kibana-nginx

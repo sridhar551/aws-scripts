@@ -1,0 +1,29 @@
+kind: Ingress
+apiVersion: extensions/v1beta1
+metadata:
+  name: kibana-nginx
+  namespace: kibana
+  labels:
+    app: kibana
+  annotations:
+    ingress.kubernetes.io/preserve-host: 'false'
+    ingress.kubernetes.io/secure-backends: 'true'
+    kubernetes.io/ingress.class: nginx
+    ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/configuration-snippet: >
+      proxy_set_header Authorization "Basic ZWxhc3RpYzo2ak9hU29PSVN1OUloRGd3YkNtUjBHcnE=";
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/upstream-vhost: 3253041dda6b48ab8c7945e499cad949.us-east-1.aws.found.io
+spec:
+  rules:
+    - host: kibana.node.iopulsedev.net
+      http:
+        paths:
+          - pathType: ImplementationSpecific
+            backend:
+              serviceName: kibana-service
+              servicePort: 443
+            path: /
+

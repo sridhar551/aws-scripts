@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-storage
+  namespace: monitoring
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: gp2
+
+# In the deployment file:
+  #  volumes:
+  #       - name: grafana-storage
+    #         persistentVolumeClaim:
+    #           claimName: grafana-storage
+  #     securityContext:
+  #       runAsNonRoot: true
+  #       runAsUser: 65534
+  #       fsGroup: 472

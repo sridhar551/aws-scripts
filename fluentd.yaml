@@ -1,0 +1,197 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluentd
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluentd
+  namespace: kube-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: fluentd
+roleRef:
+  kind: ClusterRole
+  name: fluentd
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: fluentd
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-config
+  namespace: kube-system
+  labels:
+    k8s-app: fluentd-cloudwatch
+data:
+  fluent.conf: |
+    <match fluent.**>
+      @type null
+    </match>
+    <source>
+      @type tail
+      path /var/log/containers/*.log
+      pos_file /var/log/fluentd-containers.log.pos
+      tag kubernetes.*
+      read_from_head true
+      <parse>
+        @type json
+        time_format %Y-%m-%dT%H:%M:%S.%NZ
+      </parse>
+    </source>
+    <filter kubernetes.**>
+      @type kubernetes_metadata
+    </filter>
+    <filter kubernetes.**>
+    @type record_transformer
+    enable_ruby true
+      <record>
+        service ${ENV[“ENV”]}-${record[“kubernetes”][“container_name”]}
+        pod ${record[“kubernetes”][“pod_name”]}
+      </record>
+    </filter>
+    <filter kubernetes.**>
+      @type parser
+      key_name log
+      reserve_data true
+      remove_key_name_field true
+      emit_invalid_record_to_error false
+        <parse>
+          @type json
+        </parse>
+    </filter>
+    <match kubernetes.**>
+      @type cloudwatch_logs
+      log_group_name_key pod
+      log_stream_name_key pod
+      remove_log_group_name_key true
+      remove_log_stream_name_key true
+      auto_create_stream true
+    </match>
+    <match kubernetes.var.log.containers.**fluentd**.log>
+      @type null
+    </match>
+    <match kubernetes.var.log.containers.**kube-system**.log>
+      @type null
+    </match>
+    <match kubernetes.**>
+      @type stdout
+    </match>
+    <match kubernetes.**>
+      @type stderr
+    </match>
+
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluentd
+  namespace: kube-system
+  labels:
+    k8s-app: fluentd-logging
+    version: v1
+spec:
+  selector:
+    matchLabels:
+      k8s-app: fluentd-logging
+      version: v1
+  template:
+    metadata:
+      annotations:
+        iam.amazonaws.com/role: us-east-1a.staging.kubernetes.ruist.io-service-role
+      labels:
+        k8s-app: fluentd-logging
+        version: v1
+    spec:
+      serviceAccount: fluentd
+      serviceAccountName: fluentd
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      # initContainers:
+      # - name: copy-fluentd-config
+      #   image: busybox
+      #   command: ['sh', '-c', 'cp /config-volume/..data/* /fluentd/etc']
+      #   volumeMounts:
+      #     - name: config-volume
+      #       mountPath: /config-volume
+      #     - name: fluentdconf
+      #       mountPath: /fluentd/etc
+      containers:
+      - name: fluentd
+        image: fluent/fluentd-kubernetes-daemonset:v1-debian-cloudwatch
+        # command: ['sh', '-c', 'cp /config-volume/..data/* /fluentd/etc']
+        # volumeMounts:
+        #   - name: config-volume
+        #     mountPath: /config-volume
+        #   - name: fluentdconf
+        #     mountPath: /fluentd/etc
+        env:
+          - name: LOG_GROUP_NAME
+            value: "NodeRedApplicationLogs"
+          - name: AWS_REGION
+            value: "us-east-1"
+          # - name: MERGE_JSON_LOG
+          #     value: 'true'
+          # - name: CLUSTER_NAME
+          #   value: "krysp-eks"
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
+        volumeMounts:
+        - name: varlog
+          mountPath: /var/log
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+        # - name: config-volume
+        #   mountPath: /config-volume
+        # - name: fluentdconf
+        #   mountPath: /fluentd/etc
+        # - name: runlogjournal
+        #   mountPath: /run/log/journal
+        #   readOnly: true
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: fluentconfig
+        configMap:
+          name: fluentd-config
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+      # - name: config-volume
+      #   configMap:
+      #     name: fluentd-config
+      # - name: fluentdconf
+      #   emptyDir: {}
+      # - name: runlogjournal
+      #   hostPath:
+      #     path: /run/log/journal
+# Because the image's entrypoint requires to write on /fluentd/etc but we mount configmap there which is read-only,
+# this initContainers workaround or other is needed.
+# See https://github.com/fluent/fluentd-kubernetes-daemonset/issues/90     <match fluent.**>     @type null     </match>
+     

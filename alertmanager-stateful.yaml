@@ -1,0 +1,319 @@
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  selfLink: >-
+    /apis/apps/v1/namespaces/monitoring/statefulsets/alertmanager-prom-operator-prometheus-o-alertmanager
+  uid: 928bcdf0-6fd1-499f-bdda-25015c3c2ec9
+  resourceVersion: '12552085'
+  generation: 1
+  creationTimestamp: '2020-11-12T10:29:22Z'
+  labels:
+    app: prometheus-operator-alertmanager
+    app.kubernetes.io/managed-by: Helm
+    chart: prometheus-operator-9.3.2
+    heritage: Helm
+    release: prom-operator
+  annotations:
+    meta.helm.sh/release-name: prom-operator
+    meta.helm.sh/release-namespace: monitoring
+  ownerReferences:
+    - apiVersion: monitoring.coreos.com/v1
+      kind: Alertmanager
+      name: prom-operator-prometheus-o-alertmanager
+      uid: bd2b248e-877a-46cf-8251-83a942be9e93
+      controller: true
+      blockOwnerDeletion: true
+  managedFields:
+    - manager: operator
+      operation: Update
+      apiVersion: apps/v1
+      time: '2020-12-01T10:22:09Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:metadata':
+          'f:annotations':
+            .: {}
+            'f:meta.helm.sh/release-name': {}
+            'f:meta.helm.sh/release-namespace': {}
+          'f:labels':
+            .: {}
+            'f:app': {}
+            'f:app.kubernetes.io/managed-by': {}
+            'f:chart': {}
+            'f:heritage': {}
+            'f:release': {}
+          'f:ownerReferences':
+            .: {}
+            'k:{"uid":"bd2b248e-877a-46cf-8251-83a942be9e93"}':
+              .: {}
+              'f:apiVersion': {}
+              'f:blockOwnerDeletion': {}
+              'f:controller': {}
+              'f:kind': {}
+              'f:name': {}
+              'f:uid': {}
+        'f:spec':
+          'f:podManagementPolicy': {}
+          'f:replicas': {}
+          'f:revisionHistoryLimit': {}
+          'f:selector':
+            'f:matchLabels':
+              .: {}
+              'f:alertmanager': {}
+              'f:app': {}
+          'f:serviceName': {}
+          'f:template':
+            'f:metadata':
+              'f:labels':
+                .: {}
+                'f:alertmanager': {}
+                'f:app': {}
+            'f:spec':
+              'f:containers':
+                'k:{"name":"alertmanager"}':
+                  .: {}
+                  'f:args': {}
+                  'f:env':
+                    .: {}
+                    'k:{"name":"POD_IP"}':
+                      .: {}
+                      'f:name': {}
+                      'f:valueFrom':
+                        .: {}
+                        'f:fieldRef':
+                          .: {}
+                          'f:apiVersion': {}
+                          'f:fieldPath': {}
+                  'f:image': {}
+                  'f:imagePullPolicy': {}
+                  'f:livenessProbe':
+                    .: {}
+                    'f:failureThreshold': {}
+                    'f:httpGet':
+                      .: {}
+                      'f:path': {}
+                      'f:port': {}
+                      'f:scheme': {}
+                    'f:periodSeconds': {}
+                    'f:successThreshold': {}
+                    'f:timeoutSeconds': {}
+                  'f:name': {}
+                  'f:ports':
+                    .: {}
+                    'k:{"containerPort":9093,"protocol":"TCP"}':
+                      .: {}
+                      'f:containerPort': {}
+                      'f:name': {}
+                      'f:protocol': {}
+                    'k:{"containerPort":9094,"protocol":"TCP"}':
+                      .: {}
+                      'f:containerPort': {}
+                      'f:name': {}
+                      'f:protocol': {}
+                    'k:{"containerPort":9094,"protocol":"UDP"}':
+                      .: {}
+                      'f:containerPort': {}
+                      'f:name': {}
+                      'f:protocol': {}
+                  'f:readinessProbe':
+                    .: {}
+                    'f:failureThreshold': {}
+                    'f:httpGet':
+                      .: {}
+                      'f:path': {}
+                      'f:port': {}
+                      'f:scheme': {}
+                    'f:initialDelaySeconds': {}
+                    'f:periodSeconds': {}
+                    'f:successThreshold': {}
+                    'f:timeoutSeconds': {}
+                  'f:resources':
+                    .: {}
+                    'f:requests':
+                      .: {}
+                      'f:memory': {}
+                  'f:terminationMessagePath': {}
+                  'f:terminationMessagePolicy': {}
+                  'f:volumeMounts':
+                    .: {}
+                    'k:{"mountPath":"/alertmanager"}':
+                      .: {}
+                      'f:mountPath': {}
+                      'f:name': {}
+                    'k:{"mountPath":"/etc/alertmanager/config"}':
+                      .: {}
+                      'f:mountPath': {}
+                      'f:name': {}
+                'k:{"name":"config-reloader"}':
+                  .: {}
+                  'f:args': {}
+                  'f:image': {}
+                  'f:imagePullPolicy': {}
+                  'f:name': {}
+                  'f:resources':
+                    .: {}
+                    'f:limits':
+                      .: {}
+                      'f:cpu': {}
+                      'f:memory': {}
+                  'f:terminationMessagePath': {}
+                  'f:terminationMessagePolicy': {}
+                  'f:volumeMounts':
+                    .: {}
+                    'k:{"mountPath":"/etc/alertmanager/config"}':
+                      .: {}
+                      'f:mountPath': {}
+                      'f:name': {}
+                      'f:readOnly': {}
+              'f:dnsPolicy': {}
+              'f:restartPolicy': {}
+              'f:schedulerName': {}
+              'f:securityContext':
+                .: {}
+                'f:fsGroup': {}
+                'f:runAsGroup': {}
+                'f:runAsNonRoot': {}
+                'f:runAsUser': {}
+              'f:serviceAccount': {}
+              'f:serviceAccountName': {}
+              'f:terminationGracePeriodSeconds': {}
+              'f:volumes':
+                .: {}
+                'k:{"name":"alertmanager-prom-operator-prometheus-o-alertmanager-db"}':
+                  .: {}
+                  'f:emptyDir': {}
+                  'f:name': {}
+                'k:{"name":"config-volume"}':
+                  .: {}
+                  'f:name': {}
+                  'f:secret':
+                    .: {}
+                    'f:defaultMode': {}
+                    'f:secretName': {}
+          'f:updateStrategy':
+            'f:type': {}
+        'f:status':
+          'f:replicas': {}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      alertmanager: prom-operator-prometheus-o-alertmanager
+      app: alertmanager
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        alertmanager: prom-operator-prometheus-o-alertmanager
+        app: alertmanager
+    spec:
+      volumes:
+        - name: config-volume
+          secret:
+            secretName: alertmanager-prom-operator-prometheus-o-alertmanager
+            defaultMode: 420
+        - name: alertmanager-prom-operator-prometheus-o-alertmanager-db
+          emptyDir: {}
+      containers:
+        - name: alertmanager
+          image: 'quay.io/prometheus/alertmanager:v0.21.0'
+          args:
+            - '--config.file=/etc/alertmanager/config/alertmanager.yaml'
+            - '--cluster.listen-address=[$(POD_IP)]:9094'
+            - '--storage.path=/alertmanager'
+            - '--data.retention=120h'
+            - '--web.listen-address=:9093'
+            - >-
+              --web.external-url=http://prom-operator-prometheus-o-alertmanager.monitoring:9093
+            - '--web.route-prefix=/'
+            - >-
+              --cluster.peer=alertmanager-prom-operator-prometheus-o-alertmanager-0.alertmanager-operated.monitoring.svc:9094
+          ports:
+            - name: web
+              containerPort: 9093
+              protocol: TCP
+            - name: mesh-tcp
+              containerPort: 9094
+              protocol: TCP
+            - name: mesh-udp
+              containerPort: 9094
+              protocol: UDP
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.podIP
+          resources:
+            requests:
+              memory: 200Mi
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/alertmanager/config
+            - name: alertmanager-prom-operator-prometheus-o-alertmanager-db
+              mountPath: /alertmanager
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: web
+              scheme: HTTP
+            timeoutSeconds: 3
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: web
+              scheme: HTTP
+            initialDelaySeconds: 3
+            timeoutSeconds: 3
+            periodSeconds: 5
+            successThreshold: 1
+            failureThreshold: 10
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: FallbackToLogsOnError
+          imagePullPolicy: IfNotPresent
+        - name: config-reloader
+          image: 'docker.io/jimmidyson/configmap-reload:v0.3.0'
+          args:
+            - '-webhook-url=http://127.0.0.1:9093/-/reload'
+            - '-volume-dir=/etc/alertmanager/config'
+          resources:
+            limits:
+              cpu: 100m
+              memory: 25Mi
+          volumeMounts:
+            - name: config-volume
+              readOnly: true
+              mountPath: /etc/alertmanager/config
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: FallbackToLogsOnError
+          imagePullPolicy: IfNotPresent
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 120
+      dnsPolicy: ClusterFirst
+      serviceAccountName: prom-operator-prometheus-o-alertmanager
+      serviceAccount: prom-operator-prometheus-o-alertmanager
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 2000
+        runAsNonRoot: true
+        fsGroup: 2000
+      schedulerName: default-scheduler
+  serviceName: alertmanager-operated
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  revisionHistoryLimit: 10
+status:
+  observedGeneration: 1
+  replicas: 1
+  readyReplicas: 1
+  currentReplicas: 1
+  updatedReplicas: 1
+  currentRevision: alertmanager-prom-operator-prometheus-o-alertmanager-76cf8f5f6f
+  updateRevision: alertmanager-prom-operator-prometheus-o-alertmanager-76cf8f5f6f
+  collisionCount: 0

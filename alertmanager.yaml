@@ -1,0 +1,41 @@
+# kind: ConfigMap
+# apiVersion: v1
+# metadata:
+#   name: alertmanager
+#   namespace: monitoring
+# data:
+  # config.yml: |-
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'cluster']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 10s
+  receiver: email
+  routes:
+  - match:
+      alertname: Watchdog
+    receiver: email
+
+receivers:
+- name: 'email'
+  email_configs:
+  - to: 'venkata.ummadisetty@fissionlabs.com, sridhar.tanda@fissionlabs.com, sridhar.tanda260@gmail.com'
+    from: 'grafana.krysp@gmail.com'
+    smarthost: smtp.gmail.com:587
+    auth_username: 'grafana.krysp@gmail.com'
+    auth_identity: 'grafana.krysp@gmail.com'
+    auth_password: 'Krysp@123'
+
+# inhibit_rules:
+# - source_match:
+#     severity: 'critical'
+#   target_match:
+#     severity: 'warning'
+#   # Apply inhibition if the alertname is the same.
+#   equal: ['alertname', 'dev', 'instance']
+    
+# templates:
+# - '/alertmanager/config/cloud.tpml'
